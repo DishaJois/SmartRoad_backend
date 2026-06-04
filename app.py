@@ -6,6 +6,13 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from sqlalchemy import func
 
+database_url = os.environ.get('DATABASE_URL', 'sqlite:///smartroad_dev.db')
+# Render/Supabase gives postgres://, SQLAlchemy needs postgresql://
+if database_url.startswith('postgres://'):
+    database_url = database_url.replace('postgres://', 'postgresql://', 1)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+
 app = Flask(__name__)
 CORS(app)
 
