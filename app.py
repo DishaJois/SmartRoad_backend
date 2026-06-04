@@ -6,23 +6,21 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from sqlalchemy import func
 
-database_url = os.environ.get('DATABASE_URL', 'sqlite:///smartroad_dev.db')
-# Render/Supabase gives postgres://, SQLAlchemy needs postgresql://
-if database_url.startswith('postgres://'):
-    database_url = database_url.replace('postgres://', 'postgresql://', 1)
-
-app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-
 app = Flask(__name__)
 CORS(app)
 
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
-    'DATABASE_URL', 'sqlite:///smartroad_dev.db'
-)
+# Fix Supabase/Render giving postgres:// instead of postgresql://
+_db_url = os.environ.get('DATABASE_URL', 'sqlite:///smartroad_dev.db')
+if _db_url.startswith('postgres://'):
+    _db_url = _db_url.replace('postgres://', 'postgresql://', 1)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = _db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_pre_ping': True,
     'pool_recycle': 300,
+    'pool_size': 5,
+    'max_overflow': 2,
 }
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 
@@ -132,6 +130,7 @@ def upload_trip():
             retried=retried,
         )
         db.session.add(trip)
+        db.session.flush()  # Save trip first before events
 
         db_events = []
         for e in pothole_json:
