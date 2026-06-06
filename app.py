@@ -4,23 +4,18 @@ from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, render_template_string
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
-
+from sqlalchemy import func
 
 app = Flask(__name__)
 CORS(app)
 
-# Fix Supabase/Render giving postgres:// instead of postgresql://
-_db_url = os.environ.get('DATABASE_URL', 'sqlite:///smartroad_dev.db')
-if _db_url.startswith('postgres://'):
-    _db_url = _db_url.replace('postgres://', 'postgresql://', 1)
-
-app.config['SQLALCHEMY_DATABASE_URI'] = _db_url
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
+    'DATABASE_URL', 'sqlite:///smartroad_dev.db'
+)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_pre_ping': True,
     'pool_recycle': 300,
-    'pool_size': 5,
-    'max_overflow': 2,
 }
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 
@@ -130,7 +125,6 @@ def upload_trip():
             retried=retried,
         )
         db.session.add(trip)
-        db.session.flush()  # Save trip first before events
 
         db_events = []
         for e in pothole_json:
@@ -188,8 +182,7 @@ def get_version():
 def api_stats():
     try:
         total_trips    = Trip.query.count()
-        # Use subquery count to avoid dialect issues with func.distinct
-        total_devices  = db.session.query(Trip.device_id).distinct().count()
+        total_devices  = db.session.query(func.count(func.distinct(Trip.device_id))).scalar()
         total_events   = PotholeEvent.query.count()
         severe_count   = PotholeEvent.query.filter_by(severity='severe').count()
         moderate_count = PotholeEvent.query.filter_by(severity='moderate').count()
@@ -207,7 +200,6 @@ def api_stats():
             'trips_last_24h': recent,
         }), 200
     except Exception as ex:
-        app.logger.error('Stats error: ' + str(ex))
         return jsonify({'error': str(ex)}), 500
 
 
@@ -267,14 +259,14 @@ def api_heatmap():
 def api_trips():
     try:
         page     = int(request.args.get('page', 1))
-        per_page = min(int(request.args.get('per_page', 50)), 200)
-        offset   = (page - 1) * per_page
-        total    = Trip.query.count()
-        items    = Trip.query.order_by(Trip.created_at.desc()).offset(offset).limit(per_page).all()
+        per_page = int(request.args.get('per_page', 50))
+        trips    = Trip.query.order_by(Trip.created_at.desc()).paginate(
+            page=page, per_page=per_page, error_out=False
+        )
         return jsonify({
             'trips': [{
                 'id':            t.id,
-                'device_id':     t.device_id[:8] + '...' if t.device_id else '',
+                'device_id':     t.device_id[:8] + '...',
                 'vehicle_type':  t.vehicle_type,
                 'pothole_count': t.pothole_count,
                 'city':          t.city,
@@ -282,13 +274,12 @@ def api_trips():
                 'start_lat':     t.start_lat,
                 'start_lon':     t.start_lon,
                 'created_at':    t.created_at.isoformat(),
-            } for t in items],
-            'total': total,
-            'page':  page,
-            'pages': max(1, (total + per_page - 1) // per_page),
+            } for t in trips.items],
+            'total': trips.total,
+            'page':  trips.page,
+            'pages': trips.pages,
         }), 200
     except Exception as ex:
-        app.logger.error('Trips error: ' + str(ex))
         return jsonify({'error': str(ex)}), 500
 
 
@@ -323,11 +314,6 @@ def api_trip_detail(trip_id):
         }), 200
     except Exception as ex:
         return jsonify({'error': str(ex)}), 500
-
-
-@app.route('/dashboard')
-def dashboard():
-    return render_template_string(DASHBOARD_HTML)
 
 
 DASHBOARD_HTML = """
@@ -589,6 +575,12 @@ window.addEventListener('load',async()=>{
 </body>
 </html>
 """
+
+
+@app.route('/dashboard')
+def dashboard():
+    return render_template_string(DASHBOARD_HTML)
+
 
 if __name__ == '__main__':
     with app.app_context():
