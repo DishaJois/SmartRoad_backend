@@ -69,6 +69,8 @@ with app.app_context():
     db.create_all()
 
 
+# ── HEALTH ────────────────────────────────────────────────────────────────────
+
 @app.route('/health')
 def health():
     try:
@@ -82,6 +84,8 @@ def health():
     except Exception as e:
         return jsonify({'status': 'db_error', 'error': str(e)}), 500
 
+
+# ── UPLOAD ────────────────────────────────────────────────────────────────────
 
 @app.route('/upload_trip', methods=['POST'])
 def upload_trip():
@@ -167,6 +171,8 @@ def upload_trip():
         return jsonify({'error': str(ex)}), 500
 
 
+# ── VERSION ───────────────────────────────────────────────────────────────────
+
 @app.route('/version')
 def get_version():
     return jsonify({
@@ -178,6 +184,11 @@ def get_version():
     }), 200
 
 
+# ── API: STATS ────────────────────────────────────────────────────────────────
+# FIX: field names now match what the standalone dashboard HTML expects:
+#   total_trips, active_devices, total_events, severe, moderate, mild,
+#   trips_last_24h, severity_breakdown (dict used by standalone dashboard)
+
 @app.route('/api/stats')
 def api_stats():
     try:
@@ -187,6 +198,7 @@ def api_stats():
         severe_count   = PotholeEvent.query.filter_by(severity='severe').count()
         moderate_count = PotholeEvent.query.filter_by(severity='moderate').count()
         mild_count     = PotholeEvent.query.filter_by(severity='mild').count()
+        normal_count   = PotholeEvent.query.filter_by(severity='normal').count()
         recent         = Trip.query.filter(
             Trip.created_at >= datetime.utcnow() - timedelta(hours=24)
         ).count()
@@ -197,11 +209,21 @@ def api_stats():
             'severe':         severe_count,
             'moderate':       moderate_count,
             'mild':           mild_count,
+            'normal':         normal_count,
             'trips_last_24h': recent,
+            # nested dict used by standalone dashboard's severity bars
+            'severity_breakdown': {
+                'severe':   severe_count,
+                'moderate': moderate_count,
+                'mild':     mild_count,
+                'normal':   normal_count,
+            },
         }), 200
     except Exception as ex:
         return jsonify({'error': str(ex)}), 500
 
+
+# ── API: POTHOLES ─────────────────────────────────────────────────────────────
 
 @app.route('/api/potholes')
 def api_potholes():
@@ -226,6 +248,7 @@ def api_potholes():
             q = q.filter(PotholeEvent.lon <= max_lon)
 
         events = q.order_by(PotholeEvent.created_at.desc()).limit(limit).all()
+        # FIX: return bare list (dashboard expects list, not {potholes:[...]})
         return jsonify([{
             'id':         e.id,
             'lat':        e.lat,
@@ -240,13 +263,15 @@ def api_potholes():
         return jsonify({'error': str(ex)}), 500
 
 
+# ── API: HEATMAP ──────────────────────────────────────────────────────────────
+
 @app.route('/api/heatmap')
 def api_heatmap():
     try:
         events = PotholeEvent.query.with_entities(
             PotholeEvent.lat, PotholeEvent.lon, PotholeEvent.severity
         ).limit(5000).all()
-        weight = {'severe': 1.0, 'moderate': 0.6, 'mild': 0.3}
+        weight = {'severe': 1.0, 'moderate': 0.6, 'mild': 0.3, 'normal': 0.1}
         return jsonify([
             [e.lat, e.lon, weight.get(e.severity, 0.3)]
             for e in events if e.lat and e.lon
@@ -255,12 +280,20 @@ def api_heatmap():
         return jsonify({'error': str(ex)}), 500
 
 
+# ── API: TRIPS ────────────────────────────────────────────────────────────────
+# FIX: removed limit param (was unused); use per_page properly.
+# Also accepts ?limit=N as alias for per_page for backward compat with dashboard.
+
 @app.route('/api/trips')
 def api_trips():
     try:
         page     = int(request.args.get('page', 1))
-        per_page = int(request.args.get('per_page', 50))
-        trips    = Trip.query.order_by(Trip.created_at.desc()).paginate(
+        # accept both ?per_page= and ?limit= so both dashboard versions work
+        per_page = int(request.args.get('per_page',
+                       request.args.get('limit', 50)))
+        per_page = min(per_page, 200)
+
+        trips = Trip.query.order_by(Trip.created_at.desc()).paginate(
             page=page, per_page=per_page, error_out=False
         )
         return jsonify({
@@ -282,6 +315,8 @@ def api_trips():
     except Exception as ex:
         return jsonify({'error': str(ex)}), 500
 
+
+# ── API: TRIP DETAIL ──────────────────────────────────────────────────────────
 
 @app.route('/api/trip/<trip_id>')
 def api_trip_detail(trip_id):
@@ -315,6 +350,10 @@ def api_trip_detail(trip_id):
     except Exception as ex:
         return jsonify({'error': str(ex)}), 500
 
+
+# ── BUILT-IN DASHBOARD (served by Render) ────────────────────────────────────
+# This is the dashboard Render serves at /dashboard.
+# The standalone HTML file fetches from the Render backend directly.
 
 DASHBOARD_HTML = """
 <!DOCTYPE html>
