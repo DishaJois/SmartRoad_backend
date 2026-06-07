@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SmartRoad 2.0 — Admin Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<style>
+:root {
+  --p: #1A73E8; --pl: #E8F0FE; --s: #fff; --bg: #F5F7FA;
+  --b: #E8ECF0; --t: #1C1E21; --t2: #65676B; --th: #9EA3A8;
+  --g: #1E8E3E; --gl: #E6F4EA; --r: #D93025; --rl: #FCE8E6;
+  --o: #F9AB00; --ol: #FEF7E0; --f: 'Inter', sans-serif;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--bg); color: var(--t); font-family: var(--f); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+/* LOADING */
+#loading { position: fixed; inset: 0; background: var(--s); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; transition: opacity 0.4s; }
+#loading.hidden { opacity: 0; pointer-events: none; }
+.spin { width: 40px; height: 40px; border: 3px solid var(--b); border-top-color: var(--p); border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 14px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* HEADER */
+header { background: var(--s); border-bottom: 1px solid var(--b); padding: 12px 24px; display: flex; align-items: center; gap: 12px; z-index: 100; flex-shrink: 0; }
+.logo { width: 32px; height: 32px; background: var(--pl); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+header h1 { font-size: 16px; font-weight: 700; }
+.hright { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+.live { display: flex; align-items: center; gap: 6px; background: var(--gl); border: 1px solid rgba(30,142,62,0.2); border-radius: 20px; padding: 4px 12px; font-size: 11px; font-weight: 600; color: var(--g); }
+.ldot { width: 6px; height: 6px; background: var(--g); border-radius: 50%; animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(1.3)} }
+#lastref { font-size: 11px; color: var(--th); font-family: monospace; }
+
+/* LAYOUT */
+.main { display: grid; grid-template-columns: 320px 1fr; flex: 1; overflow: hidden; min-height: 0; }
+
+/* SIDEBAR */
+.sidebar { background: var(--s); border-right: 1px solid var(--b); display: flex; flex-direction: column; overflow: hidden; }
+
+/* STATS */
+.statgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--b); flex-shrink: 0; }
+.statcell { background: var(--s); padding: 14px 16px; cursor: default; }
+.statcell:hover { background: var(--bg); }
+.statlabel { font-size: 10px; color: var(--th); text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; margin-bottom: 4px; }
+.statval { font-size: 26px; font-weight: 700; font-family: monospace; line-height: 1; }
+.statval.blue { color: var(--p); } .statval.green { color: var(--g); }
+.statval.orange { color: var(--o); } .statval.red { color: var(--r); }
+.statsub { font-size: 10px; color: var(--th); margin-top: 2px; }
+
+/* SEV BARS */
+.sevbox { padding: 12px 16px; border-bottom: 1px solid var(--b); flex-shrink: 0; }
+.sevtitle { font-size: 10px; color: var(--th); text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; margin-bottom: 10px; }
+.sevrow { margin-bottom: 8px; }
+.sevtop { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; }
+.sevbar { height: 5px; background: var(--b); border-radius: 3px; overflow: hidden; }
+.sevfill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+.fred { background: var(--r); } .forange { background: var(--o); } .fyellow { background: #FDD663; }
+
+/* FILTER */
+.filterbar { padding: 10px 16px; border-bottom: 1px solid var(--b); display: flex; gap: 6px; flex-wrap: wrap; flex-shrink: 0; }
+.fbtn { padding: 4px 10px; border-radius: 20px; border: 1px solid var(--b); background: transparent; color: var(--th); font-family: var(--f); font-size: 11px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+.fbtn:hover, .fbtn.active { border-color: var(--p); color: var(--p); background: var(--pl); }
+
+/* TRIPS */
+.tripsec { flex: 1; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+.triphead { padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--b); flex-shrink: 0; }
+.tripheadlbl { font-size: 10px; color: var(--th); text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; }
+#tripcount { font-family: monospace; color: var(--p); font-size: 12px; font-weight: 600; }
+#triplist { flex: 1; overflow-y: auto; }
+#triplist::-webkit-scrollbar { width: 3px; }
+#triplist::-webkit-scrollbar-thumb { background: var(--b); border-radius: 2px; }
+
+.triprow { padding: 10px 16px; border-bottom: 1px solid var(--b); cursor: pointer; transition: background 0.1s; display: flex; align-items: center; gap: 10px; }
+.triprow:hover { background: var(--bg); }
+.triprow.selected { background: var(--pl); border-left: 2px solid var(--p); }
+.tripinfo { flex: 1; min-width: 0; }
+.tripid { font-family: monospace; font-size: 11px; color: var(--p); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tripmeta { font-size: 11px; color: var(--th); margin-top: 1px; }
+.badge { padding: 2px 8px; border-radius: 8px; font-size: 10px; font-weight: 600; white-space: nowrap; }
+.badge-r { background: var(--rl); color: var(--r); }
+.badge-o { background: var(--ol); color: var(--o); }
+.badge-g { background: var(--gl); color: var(--g); }
+
+/* MAP */
+.mapwrap { position: relative; overflow: hidden; }
+#map { width: 100%; height: 100%; }
+.leaflet-tile-pane { filter: saturate(0.85) brightness(1.02); }
+
+.mapctrl { position: absolute; top: 12px; right: 12px; z-index: 1000; display: flex; gap: 8px; }
+.mapbtn { padding: 7px 14px; background: var(--s); border: 1px solid var(--b); border-radius: 8px; font-family: var(--f); font-size: 12px; font-weight: 500; color: var(--t2); cursor: pointer; transition: all 0.15s; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+.mapbtn:hover, .mapbtn.active { border-color: var(--p); color: var(--p); background: var(--pl); }
+
+.maplegend { position: absolute; bottom: 24px; left: 12px; z-index: 1000; background: var(--s); border: 1px solid var(--b); border-radius: 10px; padding: 12px 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+.legtitle { font-size: 10px; color: var(--th); text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; margin-bottom: 8px; }
+.legrow { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--t2); margin-bottom: 5px; }
+.legdot { width: 9px; height: 9px; border-radius: 50%; }
+
+/* DETAIL PANEL */
+#detpanel { display: none; position: absolute; bottom: 0; left: 0; right: 0; z-index: 900; background: var(--s); border-top: 1px solid var(--b); padding: 14px 20px; max-height: 180px; overflow-y: auto; box-shadow: 0 -2px 12px rgba(0,0,0,0.06); }
+#detpanel.show { display: block; }
+.dethead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.dettitle { font-family: monospace; font-size: 12px; color: var(--p); font-weight: 600; }
+.detclose { background: none; border: none; color: var(--th); cursor: pointer; font-size: 16px; padding: 2px 6px; border-radius: 6px; }
+.detclose:hover { background: var(--bg); }
+.detgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; }
+.dclabel { font-size: 10px; color: var(--th); text-transform: uppercase; letter-spacing: 0.6px; font-weight: 600; }
+.dcval { font-size: 14px; font-weight: 700; font-family: monospace; color: var(--t); margin-top: 2px; }
+
+/* ERROR BANNER */
+#errbanner { display: none; position: fixed; top: 60px; left: 50%; transform: translateX(-50%); background: var(--rl); border: 1px solid var(--r); border-radius: 10px; padding: 10px 20px; font-size: 13px; color: var(--r); z-index: 2000; }
+
+.empty { padding: 24px; text-align: center; color: var(--th); font-size: 12px; }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="spin"></div>
+  <p style="color:var(--th);font-size:13px">Loading SmartRoad dashboard...</p>
+</div>
+
+<div id="errbanner"></div>
+
+<header>
+  <div class="logo">🛣</div>
+  <h1>SmartRoad <span style="color:var(--th);font-weight:400">2.0 Admin</span></h1>
+  <div class="hright">
+    <div class="live"><div class="ldot"></div>LIVE</div>
+    <div id="lastref">—</div>
+  </div>
+</header>
+
+<div class="main">
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="statgrid">
+      <div class="statcell">
+        <div class="statlabel">Trips</div>
+        <div class="statval blue" id="st-trips">—</div>
+        <div class="statsub" id="st-today">— today</div>
+      </div>
+      <div class="statcell">
+        <div class="statlabel">Devices</div>
+        <div class="statval green" id="st-dev">—</div>
+        <div class="statsub">unique</div>
+      </div>
+      <div class="statcell">
+        <div class="statlabel">Potholes</div>
+        <div class="statval orange" id="st-ev">—</div>
+        <div class="statsub">detected</div>
+      </div>
+      <div class="statcell">
+        <div class="statlabel">Severe</div>
+        <div class="statval red" id="st-sev">—</div>
+        <div class="statsub">critical</div>
+      </div>
+    </div>
+
+    <div class="sevbox">
+      <div class="sevtitle">Severity Breakdown</div>
+      <div class="sevrow">
+        <div class="sevtop">
+          <span style="color:var(--r);font-weight:500">Severe</span>
+          <span id="pct-s" style="font-family:monospace;font-size:11px">0%</span>
+        </div>
+        <div class="sevbar"><div class="sevfill fred" id="bar-s" style="width:0%"></div></div>
+      </div>
+      <div class="sevrow">
+        <div class="sevtop">
+          <span style="color:var(--o);font-weight:500">Moderate</span>
+          <span id="pct-m" style="font-family:monospace;font-size:11px">0%</span>
+        </div>
+        <div class="sevbar"><div class="sevfill forange" id="bar-m" style="width:0%"></div></div>
+      </div>
+      <div class="sevrow">
+        <div class="sevtop">
+          <span style="color:#B8860B;font-weight:500">Mild</span>
+          <span id="pct-l" style="font-family:monospace;font-size:11px">0%</span>
+        </div>
+        <div class="sevbar"><div class="sevfill fyellow" id="bar-l" style="width:0%"></div></div>
+      </div>
+    </div>
+
+    <div class="filterbar">
+      <button class="fbtn active" onclick="filterBy('all',this)">All</button>
+      <button class="fbtn" onclick="filterBy('two_wheeler',this)">🏍 Bike</button>
+      <button class="fbtn" onclick="filterBy('auto',this)">🛺 Auto</button>
+      <button class="fbtn" onclick="filterBy('car',this)">🚗 Car</button>
+      <button class="fbtn" onclick="filterBy('bus',this)">🚌 Bus</button>
+    </div>
+
+    <div class="tripsec">
+      <div class="triphead">
+        <span class="tripheadlbl">Recent Trips</span>
+        <span id="tripcount">—</span>
+      </div>
+      <div id="triplist"></div>
+    </div>
+  </div>
+
+  <!-- MAP -->
+  <div class="mapwrap">
+    <div id="map"></div>
+
+    <div class="mapctrl">
+      <button class="mapbtn active" id="btn-markers" onclick="setMode('markers')">📍 Markers</button>
+      <button class="mapbtn" id="btn-heatmap" onclick="setMode('heatmap')">🌡 Heatmap</button>
+      <button class="mapbtn" onclick="map.setView([12.9716,77.5946],12)">🎯 Bangalore</button>
+    </div>
+
+    <div class="maplegend">
+      <div class="legtitle">Severity</div>
+      <div class="legrow"><div class="legdot" style="background:#D93025"></div>Severe</div>
+      <div class="legrow"><div class="legdot" style="background:#F9AB00"></div>Moderate</div>
+      <div class="legrow"><div class="legdot" style="background:#FDD663"></div>Mild</div>
+    </div>
+
+    <div id="detpanel">
+      <div class="dethead">
+        <div class="dettitle" id="det-title">Trip Detail</div>
+        <button class="detclose" onclick="closeDetail()">✕</button>
+      </div>
+      <div class="detgrid" id="det-grid"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── CONFIG ────────────────────────────────────────────────────────────────
+const API = 'https://smartroad-backend-nr2x.onrender.com';
+const REFRESH_MS = 30000;
+
+// ── STATE ─────────────────────────────────────────────────────────────────
+let map, heatLayer, markerLayer;
+let allTrips = [], currentFilter = 'all', selectedId = null, mapMode = 'markers';
+
+// ── HELPERS ───────────────────────────────────────────────────────────────
+function sevColor(s) {
+  return s === 'severe' ? '#D93025' : s === 'moderate' ? '#F9AB00' : '#FDD663';
+}
+
+function showError(msg) {
+  const el = document.getElementById('errbanner');
+  el.textContent = msg;
+  el.style.display = 'block';
+  setTimeout(() => { el.style.display = 'none'; }, 5000);
+}
+
+async function apiFetch(path) {
+  const res = await fetch(API + path);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
+
+// ── MAP INIT ──────────────────────────────────────────────────────────────
+function initMap() {
+  map = L.map('map', { zoomControl: false }).setView([12.9716, 77.5946], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap', maxZoom: 19,
+  }).addTo(map);
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+  markerLayer = L.layerGroup().addTo(map);
+}
+
+// ── STATS ─────────────────────────────────────────────────────────────────
+async function loadStats() {
+  try {
+    const s = await apiFetch('/api/stats');
+    document.getElementById('st-trips').textContent = s.total_trips;
+    document.getElementById('st-dev').textContent   = s.active_devices;
+    document.getElementById('st-ev').textContent    = s.total_events;
+    document.getElementById('st-sev').textContent   = s.severe;
+    document.getElementById('st-today').textContent = s.trips_last_24h + ' today';
+
+    const total = (s.severe + s.moderate + s.mild) || 1;
+    const sp = Math.round(s.severe   / total * 100);
+    const mp = Math.round(s.moderate / total * 100);
+    const lp = Math.round(s.mild     / total * 100);
+
+    document.getElementById('pct-s').textContent = sp + '%';
+    document.getElementById('pct-m').textContent = mp + '%';
+    document.getElementById('pct-l').textContent = lp + '%';
+    document.getElementById('bar-s').style.width = sp + '%';
+    document.getElementById('bar-m').style.width = mp + '%';
+    document.getElementById('bar-l').style.width = lp + '%';
+  } catch(e) {
+    showError('Could not load stats: ' + e.message);
+  }
+}
+
+// ── TRIPS LIST ────────────────────────────────────────────────────────────
+async function loadTrips() {
+  try {
+    const d = await apiFetch('/api/trips?per_page=100');
+    allTrips = d.trips || [];
+    renderTrips();
+  } catch(e) {
+    showError('Could not load trips: ' + e.message);
+  }
+}
+
+function renderTrips() {
+  const filtered = currentFilter === 'all'
+    ? allTrips
+    : allTrips.filter(t => t.vehicle_type === currentFilter);
+
+  document.getElementById('tripcount').textContent = filtered.length;
+  const el = document.getElementById('triplist');
+
+  if (!filtered.length) {
+    el.innerHTML = '<div class="empty">No trips recorded yet</div>';
+    return;
+  }
+
+  el.innerHTML = filtered.map(t => {
+    const dt  = new Date(t.created_at + 'Z');
+    const ts  = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const ds  = dt.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    const bc  = t.pothole_count === 0 ? 'badge-g' : t.pothole_count >= 10 ? 'badge-r' : 'badge-o';
+    const vi  = { two_wheeler:'🏍', auto:'🛺', car:'🚗', heavy_vehicle:'🚛', bus:'🚌' }[t.vehicle_type] || '🚗';
+    const sel = t.id === selectedId ? ' selected' : '';
+    return `<div class="triprow${sel}" onclick="selectTrip('${t.id}')">
+      <div class="tripinfo">
+        <div class="tripid">${t.id.substring(5, 22)}...</div>
+        <div class="tripmeta">${vi} ${ds} ${ts}</div>
+      </div>
+      <div class="badge ${bc}">${t.pothole_count} 🕳</div>
+    </div>`;
+  }).join('');
+}
+
+function filterBy(v, btn) {
+  currentFilter = v;
+  document.querySelectorAll('.fbtn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderTrips();
+}
+
+// ── TRIP DETAIL ────────────────────────────────────────────────────────────
+async function selectTrip(id) {
+  selectedId = id;
+  renderTrips();
+  try {
+    const d = await apiFetch('/api/trip/' + id);
+    const t = d.trip, events = d.events || [];
+
+    document.getElementById('det-title').textContent = t.id.substring(5, 22) + '...';
+    document.getElementById('det-grid').innerHTML = `
+      <div><div class="dclabel">Vehicle</div><div class="dcval">${t.vehicle_type || '—'}</div></div>
+      <div><div class="dclabel">Potholes</div><div class="dcval" style="color:var(--o)">${t.pothole_count}</div></div>
+      <div><div class="dclabel">CSV</div><div class="dcval" style="color:${t.csv_uploaded ? 'var(--g)' : 'var(--th)'}">${t.csv_uploaded ? 'Saved' : 'No'}</div></div>
+      <div><div class="dclabel">City</div><div class="dcval">${t.city}</div></div>
+    `;
+    document.getElementById('detpanel').classList.add('show');
+
+    markerLayer.clearLayers();
+    const bounds = [];
+    events.forEach(e => {
+      if (!e.lat || !e.lon) return;
+      const c = sevColor(e.severity);
+      const r = e.severity === 'severe' ? 9 : e.severity === 'moderate' ? 7 : 5;
+      L.circleMarker([e.lat, e.lon], {
+        radius: r, fillColor: c, color: '#fff', weight: 1.5, fillOpacity: 0.9,
+      }).addTo(markerLayer)
+        .bindPopup(`<b style="color:${c}">${e.severity.toUpperCase()}</b><br>${e.speed ? e.speed.toFixed(1) + ' km/h' : ''}`);
+      bounds.push([e.lat, e.lon]);
+    });
+
+    if (bounds.length) map.fitBounds(bounds, { padding: [40, 40] });
+    else if (t.start_lat) map.setView([t.start_lat, t.start_lon], 14);
+
+  } catch(e) {
+    showError('Could not load trip: ' + e.message);
+  }
+}
+
+function closeDetail() {
+  document.getElementById('detpanel').classList.remove('show');
+  selectedId = null;
+  renderTrips();
+  loadAllMarkers();
+}
+
+// ── MAP MODES ─────────────────────────────────────────────────────────────
+async function loadAllMarkers() {
+  if (mapMode !== 'markers') return;
+  try {
+    const events = await apiFetch('/api/potholes?limit=2000');
+    markerLayer.clearLayers();
+    events.forEach(e => {
+      if (!e.lat || !e.lon) return;
+      const c = sevColor(e.severity);
+      const r = e.severity === 'severe' ? 7 : e.severity === 'moderate' ? 5 : 3;
+      L.circleMarker([e.lat, e.lon], {
+        radius: r, fillColor: c, color: 'transparent', fillOpacity: 0.75,
+      }).addTo(markerLayer)
+        .bindPopup(`<b style="color:${c}">${e.severity.toUpperCase()}</b>`);
+    });
+  } catch(e) {
+    showError('Could not load markers: ' + e.message);
+  }
+}
+
+async function loadHeatmap() {
+  if (mapMode !== 'heatmap') return;
+  try {
+    const pts = await apiFetch('/api/heatmap');
+    if (heatLayer) map.removeLayer(heatLayer);
+    heatLayer = L.heatLayer(pts, {
+      radius: 20, blur: 15,
+      gradient: { '0.2': '#FDD663', '0.5': '#F9AB00', '0.8': '#D93025', '1.0': '#9C1A13' },
+    }).addTo(map);
+  } catch(e) {
+    showError('Could not load heatmap: ' + e.message);
+  }
+}
+
+function setMode(mode) {
+  mapMode = mode;
+  document.querySelectorAll('.mapbtn').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-' + mode).classList.add('active');
+  if (mode === 'markers') {
+    if (heatLayer) map.removeLayer(heatLayer);
+    markerLayer.addTo(map);
+    loadAllMarkers();
+  } else {
+    markerLayer.clearLayers();
+    loadHeatmap();
+  }
+}
+
+// ── REFRESH ───────────────────────────────────────────────────────────────
+async function refreshAll() {
+  await Promise.all([loadStats(), loadTrips()]);
+  if (!selectedId) {
+    mapMode === 'markers' ? loadAllMarkers() : loadHeatmap();
+  }
+  const now = new Date();
+  document.getElementById('lastref').textContent =
+    'Updated ' + now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────
+window.addEventListener('load', async () => {
+  initMap();
+  await refreshAll();
+  document.getElementById('loading').classList.add('hidden');
+  setInterval(refreshAll, REFRESH_MS);
+});
+</script>
+</body>
+</html>
