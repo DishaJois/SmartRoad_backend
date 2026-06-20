@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SmartRoad 2.0 — Admin Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<style>
+:root {
+  --p:#1A73E8;--pl:#E8F0FE;--s:#fff;--bg:#F5F7FA;--b:#E8ECF0;
+  --t:#1C1E21;--t2:#65676B;--th:#9EA3A8;
+  --g:#1E8E3E;--gl:#E6F4EA;--r:#D93025;--rl:#FCE8E6;
+  --o:#F9AB00;--ol:#FEF7E0;--pu:#8430CE;--pul:#F3E8FD;--f:'Inter',sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--t);font-family:var(--f);height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+
+#loading{position:fixed;inset:0;background:var(--s);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity 0.4s;}
+#loading.hidden{opacity:0;pointer-events:none;}
+.spin{width:40px;height:40px;border:3px solid var(--b);border-top-color:var(--p);border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:14px;}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+header{background:var(--s);border-bottom:1px solid var(--b);padding:12px 24px;display:flex;align-items:center;gap:12px;z-index:100;flex-shrink:0;}
+.logo{width:32px;height:32px;background:var(--pl);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;}
+header h1{font-size:16px;font-weight:700;}
+.hright{margin-left:auto;display:flex;align-items:center;gap:12px;}
+.live{display:flex;align-items:center;gap:6px;background:var(--gl);border:1px solid rgba(30,142,62,0.2);border-radius:20px;padding:4px 12px;font-size:11px;font-weight:600;color:var(--g);}
+.ldot{width:6px;height:6px;background:var(--g);border-radius:50%;animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(1.3)}}
+#lastref{font-size:11px;color:var(--th);font-family:monospace;}
+
+.tabs{display:flex;gap:0;background:var(--s);border-bottom:1px solid var(--b);flex-shrink:0;}
+.tab{padding:10px 20px;font-size:13px;font-weight:500;color:var(--th);cursor:pointer;border-bottom:2px solid transparent;transition:all 0.15s;}
+.tab:hover{color:var(--p);}
+.tab.active{color:var(--p);border-bottom-color:var(--p);}
+.tabcontent{display:none;flex:1;overflow:hidden;}
+.tabcontent.active{display:flex;}
+
+.main{flex:1;display:grid;grid-template-columns:340px 1fr;overflow:hidden;min-height:0;}
+.sidebar{background:var(--s);border-right:1px solid var(--b);display:flex;flex-direction:column;overflow:hidden;}
+
+.statgrid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--b);flex-shrink:0;}
+.statcell{background:var(--s);padding:14px 16px;}
+.statcell:hover{background:var(--bg);}
+.statlabel{font-size:10px;color:var(--th);text-transform:uppercase;letter-spacing:0.8px;font-weight:600;margin-bottom:4px;}
+.statval{font-size:26px;font-weight:700;font-family:monospace;line-height:1;}
+.statval.blue{color:var(--p)}.statval.green{color:var(--g)}.statval.orange{color:var(--o)}.statval.red{color:var(--r)}
+.statsub{font-size:10px;color:var(--th);margin-top:2px;}
+
+.sevbox{padding:12px 16px;border-bottom:1px solid var(--b);flex-shrink:0;}
+.sevtitle{font-size:10px;color:var(--th);text-transform:uppercase;letter-spacing:0.8px;font-weight:600;margin-bottom:10px;}
+.sevrow{margin-bottom:8px;}
+.sevtop{display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;}
+.sevbar{height:5px;background:var(--b);border-radius:3px;overflow:hidden;}
+.sevfill{height:100%;border-radius:3px;transition:width 0.6s ease;}
+.fred{background:var(--r)}.forange{background:var(--o)}.fyellow{background:#FDD663;}
+
+.filterbar{padding:10px 16px;border-bottom:1px solid var(--b);display:flex;gap:6px;flex-wrap:wrap;flex-shrink:0;}
+.fbtn{padding:4px 10px;border-radius:20px;border:1px solid var(--b);background:transparent;color:var(--th);font-family:var(--f);font-size:11px;font-weight:500;cursor:pointer;transition:all 0.15s;}
+.fbtn:hover,.fbtn.active{border-color:var(--p);color:var(--p);background:var(--pl);}
+
+.viewtoggle{display:flex;gap:6px;padding:8px 16px;border-bottom:1px solid var(--b);flex-shrink:0;background:var(--bg);}
+.vtbtn{flex:1;padding:6px 10px;border-radius:8px;border:1px solid var(--b);background:var(--s);color:var(--th);font-family:var(--f);font-size:11px;font-weight:600;cursor:pointer;text-align:center;transition:all 0.15s;}
+.vtbtn.active{border-color:var(--p);color:var(--p);background:var(--pl);}
+
+.tripsec{flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0;}
+.triphead{padding:10px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--b);flex-shrink:0;}
+.tripheadlbl{font-size:10px;color:var(--th);text-transform:uppercase;letter-spacing:0.8px;font-weight:600;}
+#tripcount{font-family:monospace;color:var(--p);font-size:12px;font-weight:600;}
+#triplist{flex:1;overflow-y:auto;}
+#triplist::-webkit-scrollbar{width:3px;}
+#triplist::-webkit-scrollbar-thumb{background:var(--b);border-radius:2px;}
+
+.triprow{padding:10px 16px;border-bottom:1px solid var(--b);cursor:pointer;transition:background 0.1s;display:flex;align-items:center;gap:10px;}
+.triprow:hover{background:var(--bg);}
+.triprow.selected{background:var(--pl);border-left:2px solid var(--p);}
+.tripinfo{flex:1;min-width:0;}
+.tripid{font-family:monospace;font-size:11px;color:var(--p);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:6px;}
+.tripmeta{font-size:11px;color:var(--th);margin-top:1px;}
+.badge{padding:2px 8px;border-radius:8px;font-size:10px;font-weight:600;white-space:nowrap;}
+.badge-r{background:var(--rl);color:var(--r)}.badge-o{background:var(--ol);color:var(--o)}.badge-g{background:var(--gl);color:var(--g)}
+.chunk-pill{padding:1px 6px;border-radius:6px;font-size:9px;font-weight:700;background:var(--pul);color:var(--pu);white-space:nowrap;}
+
+.mapwrap{position:relative;overflow:hidden;}
+#map{width:100%;height:100%;}
+.leaflet-tile-pane{filter:saturate(0.85) brightness(1.02);}
+.mapctrl{position:absolute;top:12px;right:12px;z-index:1000;display:flex;gap:8px;}
+.mapbtn{padding:7px 14px;background:var(--s);border:1px solid var(--b);border-radius:8px;font-family:var(--f);font-size:12px;font-weight:500;color:var(--t2);cursor:pointer;transition:all 0.15s;box-shadow:0 1px 4px rgba(0,0,0,0.1);}
+.mapbtn:hover,.mapbtn.active{border-color:var(--p);color:var(--p);background:var(--pl);}
+.maplegend{position:absolute;bottom:24px;left:12px;z-index:1000;background:var(--s);border:1px solid var(--b);border-radius:10px;padding:12px 14px;box-shadow:0 2px 8px rgba(0,0,0,0.08);}
+.legtitle{font-size:10px;color:var(--th);text-transform:uppercase;letter-spacing:0.8px;font-weight:600;margin-bottom:8px;}
+.legrow{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--t2);margin-bottom:5px;}
+.legdot{width:9px;height:9px;border-radius:50%;}
+
+#detpanel{display:none;position:absolute;bottom:0;left:0;right:0;z-index:900;background:var(--s);border-top:1px solid var(--b);padding:14px 20px;max-height:220px;overflow-y:auto;box-shadow:0 -2px 12px rgba(0,0,0,0.06);}
+#detpanel.show{display:block;}
+.dethead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+.dettitle{font-family:monospace;font-size:12px;color:var(--p);font-weight:600;}
+.detclose{background:none;border:none;color:var(--th);cursor:pointer;font-size:16px;padding:2px 6px;border-radius:6px;}
+.detclose:hover{background:var(--bg);}
+.detgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin-bottom:10px;}
+.dclabel{font-size:10px;color:var(--th);text-transform:uppercase;letter-spacing:0.6px;font-weight:600;}
+.dcval{font-size:14px;font-weight:700;font-family:monospace;color:var(--t);margin-top:2px;}
+.chunklist{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+.chunkchip{padding:4px 10px;border-radius:8px;background:var(--bg);border:1px solid var(--b);font-size:10px;font-family:monospace;color:var(--t2);}
+.chunkchip.uploaded{border-color:var(--g);color:var(--g);}
+
+.labeltab{flex:1;display:flex;flex-direction:column;overflow:hidden;padding:20px;gap:16px;}
+.labeltop{display:flex;align-items:center;gap:12px;flex-shrink:0;}
+.labeltop h2{font-size:16px;font-weight:700;}
+.labeltop p{font-size:12px;color:var(--th);}
+.labelsearch{margin-left:auto;display:flex;gap:8px;}
+.labelsearch select{padding:7px 12px;border:1px solid var(--b);border-radius:8px;font-family:var(--f);font-size:12px;background:var(--s);color:var(--t);cursor:pointer;}
+.csvdownload{padding:7px 16px;background:var(--p);color:#fff;border:none;border-radius:8px;font-family:var(--f);font-size:12px;font-weight:600;cursor:pointer;transition:background 0.15s;}
+.csvdownload:hover{opacity:0.9;}
+.csvdownload:disabled{background:var(--th);cursor:not-allowed;}
+
+.imutable-wrap{flex:1;overflow:auto;border:1px solid var(--b);border-radius:12px;background:var(--s);}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+thead{position:sticky;top:0;z-index:10;}
+thead tr{background:var(--bg);}
+th{padding:10px 12px;text-align:left;font-size:10px;font-weight:600;color:var(--th);text-transform:uppercase;letter-spacing:0.8px;border-bottom:1px solid var(--b);white-space:nowrap;}
+td{padding:9px 12px;border-bottom:1px solid var(--b);color:var(--t);font-family:monospace;font-size:11px;white-space:nowrap;}
+tr:hover td{background:var(--bg);}
+.sev-badge{display:inline-block;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;font-family:var(--f);}
+.sev-severe{background:var(--rl);color:var(--r);}
+.sev-moderate{background:var(--ol);color:var(--o);}
+.sev-mild{background:#FFFDE7;color:#B8860B;}
+.sev-normal{background:var(--bg);color:var(--th);}
+.sev-severe_pothole{background:var(--rl);color:var(--r);}
+.sev-minor_pothole{background:var(--ol);color:var(--o);}
+.sev-speed_bump{background:var(--pul);color:var(--pu);}
+
+.labeldrop{padding:3px 8px;border:1px solid var(--b);border-radius:6px;font-family:var(--f);font-size:11px;background:var(--s);color:var(--t);cursor:pointer;}
+.labeldrop.changed{border-color:var(--p);background:var(--pl);}
+.label-actions{display:flex;gap:8px;flex-shrink:0;align-items:center;}
+.label-actions span{font-size:12px;color:var(--th);}
+.savebtn{padding:8px 20px;background:var(--g);color:#fff;border:none;border-radius:8px;font-family:var(--f);font-size:13px;font-weight:600;cursor:pointer;}
+.savebtn:disabled{background:var(--th);cursor:not-allowed;}
+
+.devicetab{flex:1;overflow-y:auto;padding:20px;}
+.devicegrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-top:16px;}
+.devicecard{background:var(--s);border:1px solid var(--b);border-radius:14px;padding:16px;}
+.devicecard h3{font-size:14px;font-weight:700;margin-bottom:4px;}
+.devicecard .dmodel{font-size:11px;color:var(--th);margin-bottom:12px;}
+.devicerow{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--bg);}
+.devicerow:last-child{border-bottom:none;}
+.devicerow span:first-child{color:var(--th);}
+.devicerow span:last-child{font-family:monospace;font-weight:600;}
+
+.empty{padding:40px;text-align:center;color:var(--th);font-size:13px;}
+#errbanner{display:none;position:fixed;top:60px;left:50%;transform:translateX(-50%);background:var(--rl);border:1px solid var(--r);border-radius:10px;padding:10px 20px;font-size:13px;color:var(--r);z-index:2000;}
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="spin"></div>
+  <p style="color:var(--th);font-size:13px">Loading SmartRoad dashboard...</p>
+</div>
+
+<div id="errbanner"></div>
+
+<header>
+  <div class="logo">🛣</div>
+  <h1>SmartRoad <span style="color:var(--th);font-weight:400">2.0 Admin</span></h1>
+  <div class="hright">
+    <div class="live"><div class="ldot"></div>LIVE</div>
+    <div id="lastref">—</div>
+  </div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('map')">🗺 Map View</div>
+  <div class="tab" onclick="switchTab('label')">🏷 Label & Export</div>
+  <div class="tab" onclick="switchTab('devices')">📱 Devices</div>
+</div>
+
+<!-- TAB 1: MAP -->
+<div class="tabcontent active" id="tab-map">
+  <div class="main">
+    <div class="sidebar">
+      <div class="statgrid">
+        <div class="statcell"><div class="statlabel">Rides</div><div class="statval blue" id="st-trips">—</div><div class="statsub" id="st-today">— today</div></div>
+        <div class="statcell"><div class="statlabel">Devices</div><div class="statval green" id="st-dev">—</div><div class="statsub">unique</div></div>
+        <div class="statcell"><div class="statlabel">Potholes</div><div class="statval orange" id="st-ev">—</div><div class="statsub">detected</div></div>
+        <div class="statcell"><div class="statlabel">Severe</div><div class="statval red" id="st-sev">—</div><div class="statsub">critical</div></div>
+      </div>
+      <div class="sevbox">
+        <div class="sevtitle">Severity Breakdown</div>
+        <div class="sevrow"><div class="sevtop"><span style="color:var(--r);font-weight:500">Severe</span><span id="pct-s" style="font-family:monospace;font-size:11px">0%</span></div><div class="sevbar"><div class="sevfill fred" id="bar-s" style="width:0%"></div></div></div>
+        <div class="sevrow"><div class="sevtop"><span style="color:var(--o);font-weight:500">Moderate</span><span id="pct-m" style="font-family:monospace;font-size:11px">0%</span></div><div class="sevbar"><div class="sevfill forange" id="bar-m" style="width:0%"></div></div></div>
+        <div class="sevrow"><div class="sevtop"><span style="color:#B8860B;font-weight:500">Mild</span><span id="pct-l" style="font-family:monospace;font-size:11px">0%</span></div><div class="sevbar"><div class="sevfill fyellow" id="bar-l" style="width:0%"></div></div></div>
+      </div>
+      <div class="viewtoggle">
+        <div class="vtbtn active" id="vt-grouped" onclick="setTripView('grouped')">Grouped Rides</div>
+        <div class="vtbtn" id="vt-raw" onclick="setTripView('raw')">All Chunks</div>
+      </div>
+      <div class="filterbar">
+        <button class="fbtn active" onclick="filterBy('all',this)">All</button>
+        <button class="fbtn" onclick="filterBy('two_wheeler',this)">🏍 Bike</button>
+        <button class="fbtn" onclick="filterBy('auto',this)">🛺 Auto</button>
+        <button class="fbtn" onclick="filterBy('car',this)">🚗 Car</button>
+        <button class="fbtn" onclick="filterBy('bus',this)">🚌 Bus</button>
+      </div>
+      <div class="tripsec">
+        <div class="triphead"><span class="tripheadlbl">Recent</span><span id="tripcount">—</span></div>
+        <div id="triplist"></div>
+      </div>
+    </div>
+    <div class="mapwrap">
+      <div id="map"></div>
+      <div class="mapctrl">
+        <button class="mapbtn active" id="btn-markers" onclick="setMode('markers')">📍 Markers</button>
+        <button class="mapbtn" id="btn-heatmap" onclick="setMode('heatmap')">🌡 Heatmap</button>
+        <button class="mapbtn" onclick="map.setView([12.9716,77.5946],12)">🎯 Bangalore</button>
+      </div>
+      <div class="maplegend">
+        <div class="legtitle">Severity</div>
+        <div class="legrow"><div class="legdot" style="background:#D93025"></div>Severe</div>
+        <div class="legrow"><div class="legdot" style="background:#F9AB00"></div>Moderate</div>
+        <div class="legrow"><div class="legdot" style="background:#FDD663"></div>Mild</div>
+      </div>
+      <div id="detpanel">
+        <div class="dethead">
+          <div class="dettitle" id="det-title">Trip Detail</div>
+          <button class="detclose" onclick="closeDetail()">✕</button>
+        </div>
+        <div class="detgrid" id="det-grid"></div>
+        <div class="chunklist" id="det-chunks"></div>
+        <button class="csvdownload" id="det-csv-btn" onclick="downloadTripCsv()" style="margin-top:10px">⬇ Download CSV</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: LABEL & EXPORT -->
+<div class="tabcontent" id="tab-label">
+  <div class="labeltab">
+    <div class="labeltop">
+      <div>
+        <h2>🏷 Label & Export IMU Data</h2>
+        <p>Select a trip or chunk to view all sensor readings. Edit labels and download for model training.</p>
+      </div>
+      <div class="labelsearch">
+        <select id="trip-select" onchange="loadTripForLabeling()">
+          <option value="">Select a trip...</option>
+        </select>
+        <button class="csvdownload" id="dl-all-btn" onclick="downloadAllPotholes()">⬇ All Potholes CSV</button>
+      </div>
+    </div>
+    <div class="label-actions">
+      <span id="row-count">Select a trip to view IMU data</span>
+      <button class="savebtn" id="save-labels-btn" onclick="saveLabels()" disabled>Save Labels</button>
+      <button class="csvdownload" id="dl-trip-btn" onclick="downloadLabeledCsv()" disabled>⬇ Download Labeled CSV</button>
+    </div>
+    <div class="imutable-wrap">
+      <table id="imu-table">
+        <thead>
+          <tr>
+            <th>#</th><th>Timestamp</th><th>AccX</th><th>AccY</th><th>AccZ</th>
+            <th>GyroX</th><th>GyroY</th><th>GyroZ</th><th>Magnitude</th>
+            <th>Speed km/h</th><th>Lat</th><th>Lon</th><th>GPS OK</th>
+            <th>Auto Label</th><th>Your Label</th>
+          </tr>
+        </thead>
+        <tbody id="imu-tbody">
+          <tr><td colspan="15" class="empty">Select a trip from the dropdown above</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 3: DEVICES -->
+<div class="tabcontent" id="tab-devices">
+  <div class="devicetab">
+    <h2 style="font-size:16px;font-weight:700">📱 Calibrated Devices</h2>
+    <p style="font-size:12px;color:var(--th);margin-top:4px">
+      Noise floor measured on first launch per device. Used to normalise
+      sensor readings across different phone models during ML training.
+    </p>
+    <div class="devicegrid" id="device-grid">
+      <div class="empty">Loading devices...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API          = 'https://smartroad-backend-nr2x.onrender.com';
+const SUPABASE_URL = 'https://tdvyxnqupfgvjipxggdu.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRkdnl4bnF1cGZndmppcHhnZ2R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4NzAwNzIsImV4cCI6MjA5NTQ0NjA3Mn0.QQrzvU7a036qYmnoNGBVu2wq-39kYZY_vGutvXCNM88';
+const REFRESH_MS   = 30000;
+
+let map, heatLayer, markerLayer;
+let allTrips = [], groupedRides = [], currentFilter = 'all', selectedId = null;
+let mapMode = 'markers', tripView = 'grouped';
+let currentTripData = null, labelChanges = {}, rawCsvText = '';
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t,i) => {
+    const names = ['map','label','devices'];
+    t.classList.toggle('active', names[i] === name);
+  });
+  document.querySelectorAll('.tabcontent').forEach(c => c.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'map') setTimeout(() => map && map.invalidateSize(), 100);
+  if (name === 'devices') loadDevices();
+}
+
+function sevColor(s) {
+  if (s === 'severe' || s === 'severe_pothole') return '#D93025';
+  if (s === 'moderate' || s === 'minor_pothole') return '#F9AB00';
+  if (s === 'speed_bump') return '#8430CE';
+  return '#FDD663';
+}
+
+function showError(msg) {
+  const el = document.getElementById('errbanner');
+  el.textContent = msg; el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 5000);
+}
+
+async function apiFetch(path) {
+  const res = await fetch(API + path);
+  if (!res.ok) throw new Error('HTTP ' + res.status + ' for ' + path);
+  return res.json();
+}
+
+function initMap() {
+  map = L.map('map', { zoomControl: false }).setView([12.9716, 77.5946], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap', maxZoom: 19,
+  }).addTo(map);
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+  markerLayer = L.layerGroup().addTo(map);
+}
+
+async function loadStats() {
+  try {
+    const s = await apiFetch('/api/stats');
+    document.getElementById('st-trips').textContent = groupedRides.length || s.total_trips;
+    document.getElementById('st-dev').textContent   = s.active_devices;
+    document.getElementById('st-ev').textContent    = s.total_events;
+    document.getElementById('st-sev').textContent   = s.severe;
+    document.getElementById('st-today').textContent = s.trips_last_24h + ' today';
+    const total = (s.severe + s.moderate + s.mild) || 1;
+    const sp = Math.round(s.severe/total*100), mp = Math.round(s.moderate/total*100), lp = Math.round(s.mild/total*100);
+    document.getElementById('pct-s').textContent = sp+'%';
+    document.getElementById('pct-m').textContent = mp+'%';
+    document.getElementById('pct-l').textContent = lp+'%';
+    document.getElementById('bar-s').style.width = sp+'%';
+    document.getElementById('bar-m').style.width = mp+'%';
+    document.getElementById('bar-l').style.width = lp+'%';
+  } catch(e) { showError('Stats error: ' + e.message); }
+}
+
+// ── GROUPING LOGIC ─────────────────────────────────────────────────────────
+// Folds every "_chunkN" row plus its final un-suffixed row into one
+// "ride" entry, using parent_trip_id (set by the backend) or by
+// stripping "_chunkN" from the id ourselves as a fallback.
+function groupTrips(trips) {
+  const groups = {};
+  for (const t of trips) {
+    const pid = t.parent_trip_id || t.id.replace(/_chunk\d+$/, '');
+    if (!groups[pid]) {
+      groups[pid] = {
+        parent_trip_id: pid,
+        chunks: [],
+        vehicle_type: t.vehicle_type,
+        city: t.city,
+        pothole_count: 0,
+        start_lat: t.start_lat,
+        start_lon: t.start_lon,
+        csv_uploaded_any: false,
+        created_at: t.created_at,
+        latest_created_at: t.created_at,
+      };
+    }
+    const g = groups[pid];
+    g.chunks.push(t);
+    g.pothole_count += t.pothole_count;
+    if (t.csv_uploaded) g.csv_uploaded_any = true;
+    if (t.created_at < g.created_at) g.created_at = t.created_at;
+    if (t.created_at > g.latest_created_at) g.latest_created_at = t.created_at;
+    if (!g.start_lat && t.start_lat) { g.start_lat = t.start_lat; g.start_lon = t.start_lon; }
+  }
+  return Object.values(groups).sort((a,b) =>
+    new Date(b.latest_created_at) - new Date(a.latest_created_at));
+}
+
+async function loadTrips() {
+  try {
+    const d = await apiFetch('/api/trips?per_page=300');
+    allTrips = d.trips || [];
+    groupedRides = groupTrips(allTrips);
+    renderTrips();
+    populateTripSelect();
+  } catch(e) { showError('Trips error: ' + e.message); }
+}
+
+function setTripView(v) {
+  tripView = v;
+  document.getElementById('vt-grouped').classList.toggle('active', v === 'grouped');
+  document.getElementById('vt-raw').classList.toggle('active', v === 'raw');
+  renderTrips();
+}
+
+function vehicleIcon(v) {
+  return {two_wheeler:'🏍',auto:'🛺',car:'🚗',heavy_vehicle:'🚛',bus:'🚌'}[v] || '🚗';
+}
+
+function renderTrips() {
+  if (tripView === 'grouped') {
+    const filtered = currentFilter === 'all'
+      ? groupedRides
+      : groupedRides.filter(g => g.vehicle_type === currentFilter);
+
+    document.getElementById('tripcount').textContent = filtered.length;
+    const el = document.getElementById('triplist');
+    if (!filtered.length) { el.innerHTML = '<div class="empty">No rides yet</div>'; return; }
+
+    el.innerHTML = filtered.map(g => {
+      const dt = new Date(g.latest_created_at + 'Z');
+      const ts = dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+      const ds = dt.toLocaleDateString([],{month:'short',day:'numeric'});
+      const bc = g.pothole_count===0?'badge-g':g.pothole_count>=10?'badge-r':'badge-o';
+      const vi = vehicleIcon(g.vehicle_type);
+      const csv = g.csv_uploaded_any ? '📄' : '⚠️';
+      const chunkLabel = g.chunks.length > 1
+        ? `<span class="chunk-pill">${g.chunks.length} parts</span>` : '';
+      return `<div class="triprow${g.parent_trip_id===selectedId?' selected':''}" onclick="selectRide('${g.parent_trip_id}')">
+        <div class="tripinfo">
+          <div class="tripid">${g.parent_trip_id.substring(5,20)}... ${csv} ${chunkLabel}</div>
+          <div class="tripmeta">${vi} ${ds} ${ts}</div>
+        </div>
+        <div class="badge ${bc}">${g.pothole_count} 🕳</div>
+      </div>`;
+    }).join('');
+  } else {
+    const filtered = currentFilter === 'all' ? allTrips : allTrips.filter(t => t.vehicle_type === currentFilter);
+    document.getElementById('tripcount').textContent = filtered.length;
+    const el = document.getElementById('triplist');
+    if (!filtered.length) { el.innerHTML = '<div class="empty">No chunks yet</div>'; return; }
+    el.innerHTML = filtered.map(t => {
+      const dt = new Date(t.created_at + 'Z');
+      const ts = dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+      const ds = dt.toLocaleDateString([],{month:'short',day:'numeric'});
+      const bc = t.pothole_count===0?'badge-g':t.pothole_count>=10?'badge-r':'badge-o';
+      const vi = vehicleIcon(t.vehicle_type);
+      const csv = t.csv_uploaded ? '📄' : '⚠️';
+      const chunkLabel = t.is_chunk ? '<span class="chunk-pill">chunk</span>' : '';
+      return `<div class="triprow${t.id===selectedId?' selected':''}" onclick="selectTrip('${t.id}')">
+        <div class="tripinfo">
+          <div class="tripid">${t.id.substring(5,22)}... ${csv} ${chunkLabel}</div>
+          <div class="tripmeta">${vi} ${ds} ${ts}</div>
+        </div>
+        <div class="badge ${bc}">${t.pothole_count} 🕳</div>
+      </div>`;
+    }).join('');
+  }
+}
+
+function populateTripSelect() {
+  const sel = document.getElementById('trip-select');
+  sel.innerHTML = '<option value="">Select a trip...</option>' +
+    groupedRides.map(g => {
+      const dt = new Date(g.latest_created_at + 'Z');
+      const ds = dt.toLocaleDateString([],{month:'short',day:'numeric'}) + ' ' +
+                 dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+      const v  = vehicleIcon(g.vehicle_type);
+      const csvOk = g.csv_uploaded_any ? '' : ' ⚠️ no CSV';
+      const parts = g.chunks.length > 1 ? ` (${g.chunks.length} parts)` : '';
+      return `<option value="${g.parent_trip_id}">${v} ${ds} — ${g.pothole_count} potholes${parts}${csvOk}</option>`;
+    }).join('');
+}
+
+function filterBy(v, btn) {
+  currentFilter = v;
+  document.querySelectorAll('.fbtn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderTrips();
+}
+
+// ── GROUPED RIDE DETAIL ────────────────────────────────────────────────────
+async function selectRide(parentId) {
+  selectedId = parentId;
+  renderTrips();
+  try {
+    const d = await apiFetch('/api/trip_group/' + parentId);
+    currentTripData = { trip: d.merged, events: d.events, chunks: d.chunks, parent_trip_id: parentId };
+
+    document.getElementById('det-title').textContent = parentId.substring(5,20) + '...';
+    document.getElementById('det-grid').innerHTML = `
+      <div><div class="dclabel">Vehicle</div><div class="dcval">${d.merged.vehicle_type||'—'}</div></div>
+      <div><div class="dclabel">Potholes</div><div class="dcval" style="color:var(--o)">${d.merged.pothole_count}</div></div>
+      <div><div class="dclabel">Chunks</div><div class="dcval" style="color:var(--pu)">${d.chunk_count}</div></div>
+      <div><div class="dclabel">City</div><div class="dcval">${d.merged.city}</div></div>`;
+
+    document.getElementById('det-chunks').innerHTML = d.chunks.map(c => {
+      const label = c.id.includes('_chunk') ? c.id.split('_chunk')[1] : 'final';
+      return `<div class="chunkchip ${c.csv_uploaded?'uploaded':''}">
+        part ${label} · ${c.pothole_count} 🕳 ${c.csv_uploaded?'✅':'⚠️'}
+      </div>`;
+    }).join('');
+
+    document.getElementById('detpanel').classList.add('show');
+
+    markerLayer.clearLayers();
+    const bounds = [];
+    d.events.forEach(e => {
+      if (!e.lat||!e.lon) return;
+      const c = sevColor(e.severity);
+      L.circleMarker([e.lat,e.lon],{radius:8,fillColor:c,color:'#fff',weight:1.5,fillOpacity:0.9})
+       .addTo(markerLayer)
+       .bindPopup(`<b style="color:${c}">${e.severity.toUpperCase()}</b><br>${e.speed?e.speed.toFixed(1)+' km/h':''}`);
+      bounds.push([e.lat,e.lon]);
+    });
+    if (bounds.length) map.fitBounds(bounds,{padding:[40,40]});
+    else if (d.merged.start_lat) map.setView([d.merged.start_lat,d.merged.start_lon],14);
+  } catch(e) { showError('Ride detail error: ' + e.message); }
+}
+
+// ── SINGLE CHUNK DETAIL (raw view) ────────────────────────────────────────
+async function selectTrip(id) {
+  selectedId = id;
+  renderTrips();
+  try {
+    const d = await apiFetch('/api/trip/' + id);
+    const t = d.trip, events = d.events || [];
+    currentTripData = { trip: t, events, chunks: null, parent_trip_id: t.parent_trip_id || t.id };
+
+    document.getElementById('det-title').textContent = t.id.substring(5,22) + '...';
+    document.getElementById('det-grid').innerHTML = `
+      <div><div class="dclabel">Vehicle</div><div class="dcval">${t.vehicle_type||'—'}</div></div>
+      <div><div class="dclabel">Potholes</div><div class="dcval" style="color:var(--o)">${t.pothole_count}</div></div>
+      <div><div class="dclabel">CSV</div><div class="dcval" style="color:${t.csv_uploaded?'var(--g)':'var(--r)'}">${t.csv_uploaded?'✅ Uploaded':'❌ Missing'}</div></div>
+      <div><div class="dclabel">City</div><div class="dcval">${t.city}</div></div>`;
+    document.getElementById('det-chunks').innerHTML = t.is_chunk
+      ? `<div class="chunkchip uploaded">part of ${t.parent_trip_id}</div>` : '';
+    document.getElementById('detpanel').classList.add('show');
+
+    markerLayer.clearLayers();
+    const bounds = [];
+    events.forEach(e => {
+      if (!e.lat||!e.lon) return;
+      const c = sevColor(e.severity);
+      L.circleMarker([e.lat,e.lon],{radius:8,fillColor:c,color:'#fff',weight:1.5,fillOpacity:0.9})
+       .addTo(markerLayer)
+       .bindPopup(`<b style="color:${c}">${e.severity.toUpperCase()}</b><br>${e.speed?e.speed.toFixed(1)+' km/h':''}`);
+      bounds.push([e.lat,e.lon]);
+    });
+    if (bounds.length) map.fitBounds(bounds,{padding:[40,40]});
+    else if (t.start_lat) map.setView([t.start_lat,t.start_lon],14);
+  } catch(e) { showError('Trip detail error: ' + e.message); }
+}
+
+function closeDetail() {
+  document.getElementById('detpanel').classList.remove('show');
+  selectedId = null; currentTripData = null;
+  renderTrips(); loadAllMarkers();
+}
+
+// ── CSV DOWNLOAD FROM SUPABASE ─────────────────────────────────────────────
+async function downloadTripCsv() {
+  if (!currentTripData) return;
+  if (currentTripData.chunks) {
+    // Grouped ride — download every chunk's CSV and concatenate
+    let combined = '';
+    for (const c of currentTripData.chunks) {
+      const text = await fetchAndDownloadCsv(c.id);
+      if (text) {
+        const lines = text.trim().split('\n');
+        if (!combined) combined = lines[0] + '\n';
+        combined += lines.slice(1).join('\n') + '\n';
+      }
+    }
+    if (!combined) { showError('No CSV chunks found in storage for this ride'); return; }
+    triggerDownload(combined, `SmartRoad_ride_${currentTripData.parent_trip_id.substring(5,16)}.csv`);
+  } else {
+    const tripId = currentTripData.trip.id;
+    const text = await fetchAndDownloadCsv(tripId);
+    if (text) triggerDownload(text, `SmartRoad_${tripId.substring(5,16)}.csv`);
+  }
+}
+
+function triggerDownload(text, filename) {
+  const blob = new Blob([text], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function fetchAndDownloadCsv(tripId) {
+  try {
+    const url = `${SUPABASE_URL}/storage/v1/object/trip-csvs/${tripId}.csv`;
+    const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + SUPABASE_KEY } });
+    if (!res.ok) return null;
+    return await res.text();
+  } catch(e) { return null; }
+}
+
+// ── LABELING TAB ────────────────────────────────────────────────────────────
+async function loadTripForLabeling() {
+  const parentId = document.getElementById('trip-select').value;
+  if (!parentId) return;
+
+  document.getElementById('imu-tbody').innerHTML =
+    '<tr><td colspan="15" class="empty">Loading CSV data...</td></tr>';
+  document.getElementById('row-count').textContent = 'Loading...';
+  document.getElementById('dl-trip-btn').disabled = true;
+  document.getElementById('save-labels-btn').disabled = true;
+  labelChanges = {}; rawCsvText = '';
+
+  try {
+    const d = await apiFetch('/api/trip_group/' + parentId);
+    let combined = '';
+    for (const c of d.chunks) {
+      const text = await fetchAndDownloadCsv(c.id);
+      if (text) {
+        const lines = text.trim().split('\n');
+        if (!combined) combined = lines[0] + '\n';
+        combined += lines.slice(1).join('\n') + '\n';
+      }
+    }
+
+    if (!combined) {
+      if (!d.events.length) {
+        document.getElementById('imu-tbody').innerHTML =
+          '<tr><td colspan="15" class="empty">No data available — CSV was not uploaded to storage.</td></tr>';
+        document.getElementById('row-count').textContent = '0 rows';
+        return;
+      }
+      renderEventsTable(d.events);
+      document.getElementById('row-count').textContent = d.events.length + ' pothole events (from database)';
+      document.getElementById('dl-trip-btn').disabled = false;
+      return;
+    }
+
+    rawCsvText = combined;
+    const rows = parseCsv(combined);
+    renderCsvTable(rows);
+    document.getElementById('row-count').textContent =
+      rows.length + ' IMU samples across ' + d.chunk_count + ' part(s)';
+    document.getElementById('dl-trip-btn').disabled = false;
+    document.getElementById('save-labels-btn').disabled = false;
+  } catch(e) {
+    showError('Could not load trip data: ' + e.message);
+  }
+}
+
+function parseCsv(text) {
+  const lines = text.trim().split('\n');
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(',');
+  return lines.slice(1).map(line => {
+    const vals = line.split(',');
+    const obj = {};
+    headers.forEach((h,i) => obj[h.trim()] = vals[i]?.trim() || '');
+    return obj;
+  });
+}
+
+function renderCsvTable(rows) {
+  const tbody = document.getElementById('imu-tbody');
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="15" class="empty">No rows in CSV</td></tr>'; return; }
+  tbody.innerHTML = rows.map((row, i) => {
+    const ax = parseFloat(row.AccX||0), ay = parseFloat(row.AccY||0), az = parseFloat(row.AccZ||0);
+    const mag = Math.sqrt(ax*ax + ay*ay + az*az).toFixed(3);
+    const sev = row.Severity || 'normal';
+    const ts = row.Timestamp ? new Date(parseInt(row.Timestamp)).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '—';
+    return `<tr>
+      <td>${i+1}</td><td>${ts}</td>
+      <td>${parseFloat(row.AccX||0).toFixed(4)}</td>
+      <td>${parseFloat(row.AccY||0).toFixed(4)}</td>
+      <td>${parseFloat(row.AccZ||0).toFixed(4)}</td>
+      <td>${parseFloat(row.GyroX||0).toFixed(4)}</td>
+      <td>${parseFloat(row.GyroY||0).toFixed(4)}</td>
+      <td>${parseFloat(row.GyroZ||0).toFixed(4)}</td>
+      <td><b>${mag}</b></td>
+      <td>${parseFloat(row.Speed||0).toFixed(1)}</td>
+      <td>${parseFloat(row.Lat||0).toFixed(6)}</td>
+      <td>${parseFloat(row.Lon||0).toFixed(6)}</td>
+      <td>${row.GpsReliable==='1'?'✅':'❌'}</td>
+      <td><span class="sev-badge sev-${sev}">${sev}</span></td>
+      <td><select class="labeldrop" data-row="${i}" onchange="onLabelChange(this,${i})">
+        <option value="normal" ${sev==='normal'?'selected':''}>normal</option>
+        <option value="minor_pothole" ${sev==='minor_pothole'?'selected':''}>minor_pothole</option>
+        <option value="severe_pothole" ${sev==='severe_pothole'?'selected':''}>severe_pothole</option>
+        <option value="speed_bump" ${sev==='speed_bump'?'selected':''}>speed_bump</option>
+      </select></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderEventsTable(events) {
+  const tbody = document.getElementById('imu-tbody');
+  tbody.innerHTML = events.map((e, i) => {
+    const mag = Math.sqrt((e.acc_x||0)**2 + (e.acc_y||0)**2 + (e.acc_z||0)**2).toFixed(3);
+    const sev = e.severity || 'mild';
+    const ts = e.timestamp ? new Date(e.timestamp).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '—';
+    return `<tr>
+      <td>${i+1}</td><td>${ts}</td>
+      <td>${(e.acc_x||0).toFixed(4)}</td><td>${(e.acc_y||0).toFixed(4)}</td><td>${(e.acc_z||0).toFixed(4)}</td>
+      <td>${(e.gyro_x||0).toFixed(4)}</td><td>${(e.gyro_y||0).toFixed(4)}</td><td>${(e.gyro_z||0).toFixed(4)}</td>
+      <td><b>${mag}</b></td><td>${(e.speed||0).toFixed(1)}</td>
+      <td>${(e.lat||0).toFixed(6)}</td><td>${(e.lon||0).toFixed(6)}</td><td>✅</td>
+      <td><span class="sev-badge sev-${sev}">${sev}</span></td>
+      <td><select class="labeldrop" data-row="${i}" onchange="onLabelChange(this,${i})">
+        <option value="normal" ${sev==='normal'?'selected':''}>normal</option>
+        <option value="minor_pothole" ${sev==='minor_pothole'?'selected':''}>minor_pothole</option>
+        <option value="severe_pothole" ${sev==='severe_pothole'?'selected':''}>severe_pothole</option>
+        <option value="speed_bump" ${sev==='speed_bump'?'selected':''}>speed_bump</option>
+      </select></td>
+    </tr>`;
+  }).join('');
+}
+
+function onLabelChange(select, rowIndex) {
+  labelChanges[rowIndex] = select.value;
+  select.classList.add('changed');
+  document.getElementById('save-labels-btn').disabled = false;
+}
+
+function saveLabels() {
+  downloadLabeledCsv();
+  document.getElementById('save-labels-btn').disabled = true;
+  document.querySelectorAll('.labeldrop.changed').forEach(el => el.classList.remove('changed'));
+}
+
+function downloadLabeledCsv() {
+  const parentId = document.getElementById('trip-select').value;
+  if (!parentId) return;
+  let csvOutput = '';
+
+  if (rawCsvText) {
+    const lines = rawCsvText.trim().split('\n');
+    const headerArr = lines[0].split(',').map(h => h.trim());
+    const sevIdx = headerArr.indexOf('Severity');
+    csvOutput = lines[0] + '\n';
+    lines.slice(1).forEach((line, i) => {
+      if (labelChanges[i] !== undefined && sevIdx >= 0) {
+        const parts = line.split(',');
+        parts[sevIdx] = labelChanges[i];
+        csvOutput += parts.join(',') + '\n';
+      } else {
+        csvOutput += line + '\n';
+      }
+    });
+  } else {
+    const rows = document.querySelectorAll('#imu-tbody tr');
+    csvOutput = 'Row,Timestamp,AccX,AccY,AccZ,GyroX,GyroY,GyroZ,Magnitude,Speed,Lat,Lon,GpsOk,AutoLabel,ManualLabel\n';
+    rows.forEach((row) => {
+      const cells = row.querySelectorAll('td');
+      if (cells.length < 15) return;
+      const drop = row.querySelector('.labeldrop');
+      const manualLabel = drop ? drop.value : cells[13].textContent.trim();
+      csvOutput += Array.from(cells).slice(0,14).map(c => {
+        const span = c.querySelector('.sev-badge');
+        return span ? span.textContent.trim() : c.textContent.trim();
+      }).join(',') + ',' + manualLabel + '\n';
+    });
+  }
+  triggerDownload(csvOutput, `SmartRoad_labeled_${parentId.substring(5,16)}.csv`);
+}
+
+async function downloadAllPotholes() {
+  try {
+    document.getElementById('dl-all-btn').disabled = true;
+    document.getElementById('dl-all-btn').textContent = 'Loading...';
+    const events = await apiFetch('/api/potholes?limit=5000');
+    const header = 'id,lat,lon,severity,speed,vibration,timestamp,created_at\n';
+    const rows = events.map(e =>
+      `${e.id},${e.lat},${e.lon},${e.severity},${e.speed||''},${e.vibration||''},${e.timestamp||''},${e.created_at}`
+    ).join('\n');
+    triggerDownload(header + rows, `SmartRoad_all_potholes_${new Date().toISOString().slice(0,10)}.csv`);
+  } catch(e) {
+    showError('Download error: ' + e.message);
+  } finally {
+    document.getElementById('dl-all-btn').disabled = false;
+    document.getElementById('dl-all-btn').textContent = '⬇ All Potholes CSV';
+  }
+}
+
+// ── DEVICES TAB ──────────────────────────────────────────────────────────
+async function loadDevices() {
+  try {
+    const devices = await apiFetch('/api/device_profiles');
+    const grid = document.getElementById('device-grid');
+    if (!devices.length) {
+      grid.innerHTML = '<div class="empty">No devices calibrated yet</div>';
+      return;
+    }
+    grid.innerHTML = devices.map(d => `
+      <div class="devicecard">
+        <h3>${d.manufacturer || 'Unknown'} ${d.model || ''}</h3>
+        <div class="dmodel">${d.device_id.substring(0,8)}...</div>
+        <div class="devicerow"><span>Noise Floor Z</span><span>${(d.noise_floor_z||0).toFixed(3)} m/s²</span></div>
+        <div class="devicerow"><span>Bias Z</span><span>${(d.bias_z||0).toFixed(3)} m/s²</span></div>
+      </div>
+    `).join('');
+  } catch(e) {
+    document.getElementById('device-grid').innerHTML =
+      '<div class="empty">Could not load devices: ' + e.message + '</div>';
+  }
+}
+
+// ── MAP MODES ────────────────────────────────────────────────────────────
+async function loadAllMarkers() {
+  if (mapMode !== 'markers') return;
+  try {
+    const events = await apiFetch('/api/potholes?limit=2000');
+    markerLayer.clearLayers();
+    events.forEach(e => {
+      if (!e.lat||!e.lon) return;
+      const c = sevColor(e.severity);
+      L.circleMarker([e.lat,e.lon],{radius:e.severity==='severe'?7:e.severity==='moderate'?5:3,fillColor:c,color:'transparent',fillOpacity:0.75})
+       .addTo(markerLayer).bindPopup(`<b style="color:${c}">${e.severity.toUpperCase()}</b>`);
+    });
+  } catch(e) { showError('Markers error: ' + e.message); }
+}
+
+async function loadHeatmap() {
+  if (mapMode !== 'heatmap') return;
+  try {
+    const pts = await apiFetch('/api/heatmap');
+    if (heatLayer) map.removeLayer(heatLayer);
+    heatLayer = L.heatLayer(pts,{radius:20,blur:15,gradient:{'0.2':'#FDD663','0.5':'#F9AB00','0.8':'#D93025','1.0':'#9C1A13'}}).addTo(map);
+  } catch(e) { showError('Heatmap error: ' + e.message); }
+}
+
+function setMode(mode) {
+  mapMode = mode;
+  document.querySelectorAll('.mapbtn').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-' + mode).classList.add('active');
+  if (mode==='markers') { if(heatLayer) map.removeLayer(heatLayer); markerLayer.addTo(map); loadAllMarkers(); }
+  else { markerLayer.clearLayers(); loadHeatmap(); }
+}
+
+async function refreshAll() {
+  await loadTrips();
+  await loadStats();
+  if (!selectedId) { mapMode==='markers' ? loadAllMarkers() : loadHeatmap(); }
+  document.getElementById('lastref').textContent =
+    'Updated ' + new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+window.addEventListener('load', async () => {
+  initMap();
+  await refreshAll();
+  document.getElementById('loading').classList.add('hidden');
+  setInterval(refreshAll, REFRESH_MS);
+});
+</script>
+</body>
+</html>
