@@ -67,8 +67,111 @@ class PotholeEvent(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
+class DeviceProfile(db.Model):
+    """
+    Per-device sensor calibration, sent once by device_calibration.dart
+    after the 5-second flat-surface noise measurement. Used to build
+    the DEVICE_SCALE_FACTORS table during ML preprocessing so the same
+    pothole produces comparable AccZ values across different phone
+    models (the device-based normalisation Disha's friend suggested).
+    """
+    __tablename__   = 'device_profiles'
+    device_id       = db.Column(db.String(36), primary_key=True)
+    manufacturer    = db.Column(db.String(50))
+    model           = db.Column(db.String(80), index=True)
+    brand           = db.Column(db.String(50))
+    android_version = db.Column(db.String(20))
+    sdk_int         = db.Column(db.Integer)
+    noise_floor_x   = db.Column(db.Float)
+    noise_floor_y   = db.Column(db.Float)
+    noise_floor_z   = db.Column(db.Float)
+    bias_x          = db.Column(db.Float)
+    bias_y          = db.Column(db.Float)
+    bias_z          = db.Column(db.Float)
+    calibrated_at   = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at      = db.Column(db.DateTime, default=datetime.utcnow,
+                                 onupdate=datetime.utcnow)
+
+
 with app.app_context():
     db.create_all()
+
+
+@app.route('/register_device', methods=['POST'])
+def register_device():
+    """
+    Called once per device by device_calibration.dart after the
+    flat-surface noise measurement. Upserts so re-calibration
+    (or app reinstall) just updates the existing row.
+    """
+    try:
+        data = request.get_json(force=True)
+        if not data:
+            return jsonify({'error': 'No JSON body'}), 400
+
+        device_id = str(data.get('device_id', '')).strip()
+        if not device_id:
+            return jsonify({'error': 'Missing device_id'}), 400
+
+        existing = DeviceProfile.query.get(device_id)
+        if existing:
+            existing.manufacturer    = data.get('manufacturer', existing.manufacturer)
+            existing.model           = data.get('model', existing.model)
+            existing.brand           = data.get('brand', existing.brand)
+            existing.android_version = data.get('android_version', existing.android_version)
+            existing.sdk_int         = int(data.get('sdk_int', existing.sdk_int or 0))
+            existing.noise_floor_x   = float(data.get('noise_floor_x', existing.noise_floor_x or 0))
+            existing.noise_floor_y   = float(data.get('noise_floor_y', existing.noise_floor_y or 0))
+            existing.noise_floor_z   = float(data.get('noise_floor_z', existing.noise_floor_z or 0))
+            existing.bias_x          = float(data.get('bias_x', existing.bias_x or 0))
+            existing.bias_y          = float(data.get('bias_y', existing.bias_y or 0))
+            existing.bias_z          = float(data.get('bias_z', existing.bias_z or 0))
+        else:
+            profile = DeviceProfile(
+                device_id=device_id,
+                manufacturer=data.get('manufacturer', 'unknown'),
+                model=data.get('model', 'unknown'),
+                brand=data.get('brand', 'unknown'),
+                android_version=data.get('android_version', 'unknown'),
+                sdk_int=int(data.get('sdk_int', 0)),
+                noise_floor_x=float(data.get('noise_floor_x', 0)),
+                noise_floor_y=float(data.get('noise_floor_y', 0)),
+                noise_floor_z=float(data.get('noise_floor_z', 0)),
+                bias_x=float(data.get('bias_x', 0)),
+                bias_y=float(data.get('bias_y', 0)),
+                bias_z=float(data.get('bias_z', 0)),
+            )
+            db.session.add(profile)
+
+        db.session.commit()
+        app.logger.info(
+            f"Device registered: {data.get('manufacturer')} "
+            f"{data.get('model')} | noise_z={data.get('noise_floor_z')}")
+        return jsonify({'status': 'ok'}), 200
+
+    except Exception as ex:
+        db.session.rollback()
+        app.logger.error(f'Device registration error: {ex}')
+        return jsonify({'error': str(ex)}), 500
+
+
+@app.route('/api/device_profiles')
+def api_device_profiles():
+    """
+    Exported by Chandanashree's preprocessing pipeline to build
+    DEVICE_SCALE_FACTORS automatically instead of hand-typing them.
+    """
+    try:
+        profiles = DeviceProfile.query.all()
+        return jsonify([{
+            'device_id':     p.device_id,
+            'manufacturer':  p.manufacturer,
+            'model':         p.model,
+            'noise_floor_z': p.noise_floor_z,
+            'bias_z':        p.bias_z,
+        } for p in profiles]), 200
+    except Exception as ex:
+        return jsonify({'error': str(ex)}), 500
 
 
 @app.route('/health')
