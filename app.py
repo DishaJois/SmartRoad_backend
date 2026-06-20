@@ -378,15 +378,17 @@ def api_trips():
         )
         return jsonify({
             'trips': [{
-                'id':            t.id,
-                'device_id':     t.device_id[:8] + '...',
-                'vehicle_type':  t.vehicle_type,
-                'pothole_count': t.pothole_count,
-                'city':          t.city,
-                'csv_uploaded':  t.csv_uploaded,
-                'start_lat':     t.start_lat,
-                'start_lon':     t.start_lon,
-                'created_at':    t.created_at.isoformat(),
+                'id':             t.id,
+                'device_id':      t.device_id[:8] + '...',
+                'vehicle_type':   t.vehicle_type,
+                'pothole_count':  t.pothole_count,
+                'city':           t.city,
+                'csv_uploaded':   t.csv_uploaded,
+                'start_lat':      t.start_lat,
+                'start_lon':      t.start_lon,
+                'is_chunk':       t.is_chunk,
+                'parent_trip_id': t.parent_trip_id,
+                'created_at':     t.created_at.isoformat(),
             } for t in trips.items],
             'total': trips.total,
             'page':  trips.page,
@@ -403,18 +405,20 @@ def api_trip_detail(trip_id):
         events = t.events.all()
         return jsonify({
             'trip': {
-                'id':            t.id,
-                'device_id':     t.device_id,
-                'vehicle_type':  t.vehicle_type,
-                'pothole_count': t.pothole_count,
-                'city':          t.city,
-                'csv_uploaded':  t.csv_uploaded,
-                'csv_path':      t.csv_path,
-                'start_lat':     t.start_lat,
-                'start_lon':     t.start_lon,
-                'end_lat':       t.end_lat,
-                'end_lon':       t.end_lon,
-                'created_at':    t.created_at.isoformat(),
+                'id':             t.id,
+                'device_id':      t.device_id,
+                'vehicle_type':   t.vehicle_type,
+                'pothole_count':  t.pothole_count,
+                'city':           t.city,
+                'csv_uploaded':   t.csv_uploaded,
+                'csv_path':       t.csv_path,
+                'start_lat':      t.start_lat,
+                'start_lon':      t.start_lon,
+                'end_lat':        t.end_lat,
+                'end_lon':        t.end_lon,
+                'is_chunk':       t.is_chunk,
+                'parent_trip_id': t.parent_trip_id,
+                'created_at':     t.created_at.isoformat(),
             },
             'events': [{
                 'lat':       e.lat,
@@ -427,6 +431,68 @@ def api_trip_detail(trip_id):
         }), 200
     except Exception as ex:
         return jsonify({'error': str(ex)}), 500
+
+
+@app.route('/api/trip_group/<parent_id>')
+def api_trip_group(parent_id):
+    """
+    Returns every chunk belonging to one continuous ride, plus a
+    merged event list, so the dashboard can show "1 ride" instead of
+    N separate chunk rows. parent_id is the trip_id with any
+    '_chunkN' suffix already stripped (the un-suffixed final segment
+    IS the parent — its own id equals parent_trip_id for its chunks).
+    """
+    try:
+        chunks = Trip.query.filter(
+            (Trip.id == parent_id) | (Trip.parent_trip_id == parent_id)
+        ).order_by(Trip.created_at.asc()).all()
+
+        if not chunks:
+            return jsonify({'error': 'No trip found for that id'}), 404
+
+        all_events = []
+        total_potholes = 0
+        for t in chunks:
+            total_potholes += t.pothole_count
+            all_events.extend(t.events.all())
+
+        first, last = chunks[0], chunks[-1]
+
+        return jsonify({
+            'parent_trip_id': parent_id,
+            'chunk_count':     len(chunks),
+            'chunks': [{
+                'id':            c.id,
+                'is_chunk':      c.is_chunk,
+                'pothole_count': c.pothole_count,
+                'csv_uploaded':  c.csv_uploaded,
+                'created_at':    c.created_at.isoformat(),
+            } for c in chunks],
+            'merged': {
+                'device_id':      first.device_id,
+                'vehicle_type':   first.vehicle_type,
+                'city':           first.city,
+                'pothole_count':  total_potholes,
+                'start_lat':      first.start_lat,
+                'start_lon':      first.start_lon,
+                'end_lat':        last.end_lat,
+                'end_lon':        last.end_lon,
+                'started_at':     first.created_at.isoformat(),
+                'ended_at':       last.created_at.isoformat(),
+            },
+            'events': [{
+                'lat':       e.lat,
+                'lon':       e.lon,
+                'severity':  e.severity,
+                'speed':     e.speed,
+                'vibration': e.vibration,
+                'timestamp': e.timestamp,
+            } for e in all_events],
+        }), 200
+    except Exception as ex:
+        return jsonify({'error': str(ex)}), 500
+
+
 
 
 DASHBOARD_HTML = """
